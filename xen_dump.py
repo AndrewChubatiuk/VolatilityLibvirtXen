@@ -37,74 +37,57 @@ class XenCoreDumpElf64(addrspace.AbstractRunBasedMemory):
         self.as_assert(str(elf.e_type) == 'ET_CORE', "ELF64 type is not a Core file")
         self.PAGE_SIZE = 0
         self.PAGE_SHIFT = 0
-        self.xen_mem_offset = 0
-        self.pfn_offsets = {}
+        self.offsets = {}
         self.xen_vm_max_pfn = 0
         shdrs = list(elf.section_headers())
-        offset = shdrs[2].sh_offset
-        note = obj.Object("elf64_note", offset, vm = base)
-        offset += XEN_ELFNOTE_DESC_SIZE
-        note_dhead = obj.Object("elf64_note", offset, vm = base)
-        if note_dhead.n_type != XEN_ELFNOTE_DUMPCORE_HEADER:
-            return
-        offset += XEN_ELFNOTE_DESC_SIZE     
-        hdr_desc = obj.Object("XEN_ELF_HEADER_DESC", offset, vm = base)
-        if hdr_desc != None:
-            self.PAGE_SIZE = hdr_desc.xch_page_size
-            self.PAGE_SHIFT = int(math.log(self.PAGE_SIZE, 2))
-            self.xen_vm_max_pfn = hdr_desc.xch_nr_pages 
-        self.xen_mem_offset = shdrs[5].sh_offset 
-        pfn_offset = shdrs[6].sh_offset
-        page_offset = self.xen_mem_offset 
-        while pfn_offset < (shdrs[6].sh_offset + shdrs[6].sh_size):
-            pfnno = int(obj.Object("unsigned long long", pfn_offset, vm=base))
-            self.pfn_offsets[pfnno] = page_offset
-            pfn_offset += 8
-            page_offset += self.PAGE_SIZE
+        try:
+            offset = shdrs[2].sh_offset + XEN_ELFNOTE_DESC_SIZE
+            note = obj.Object("elf64_note", offset, vm = base)
+            if note.n_type != XEN_ELFNOTE_DUMPCORE_HEADER:
+                return
+            offset += XEN_ELFNOTE_DESC_SIZE     
+            header_desc = obj.Object("XEN_ELF_HEADER_DESC", offset, vm = base)
+            if header_desc != None:
+                self.PAGE_SIZE = header_desc.xch_page_size
+                self.PAGE_SHIFT = int(math.log(self.PAGE_SIZE, 2))
+                self.xen_vm_max_pfn = header_desc.xch_nr_pages 
+            page_offset = shdrs[5].sh_offset 
+            pfn_offset = shdrs[6].sh_offset
+            while pfn_offset < (shdrs[6].sh_offset + shdrs[6].sh_size):
+                pfnno = int(obj.Object("unsigned long long", pfn_offset, vm=base))
+                self.offsets[pfnno] = page_offset
+                pfn_offset += 8
+                page_offset += self.PAGE_SIZE
+        except:
+            pass
         max_memory_len = (self.xen_vm_max_pfn + 1) << self.PAGE_SHIFT
-        
-    def is_valid_address(self, phys_addr):
-        pfn = phys_addr >> self.PAGE_SHIFT
+
+    def is_valid_address(self, physical_address):
+        pfn = physical_address >> self.PAGE_SHIFT
         return not pfn > self.xen_vm_max_pfn
     
-    def get_addr(self, addr):
-        pfn = addr >> self.PAGE_SHIFT      
-        try:
-            return (self.pfn_offsets[pfn] + addr % self.PAGE_SIZE) if self.pfn_offsets[pfn] else None
-        except:
-            return None
+    def get_address(self, address):
+        pfn = address >> self.PAGE_SHIFT
+        return self.offsets[pfn] + address % self.PAGE_SIZE if self.offsets[pfn] else None
 
-    def read(self, addr, length):
-        return self.zread(addr, length)
-
-    def zread(self, addr, length):
-        first_block = 0x1000 - addr % 0x1000
-        full_blocks = ((length + addr % 0x1000) / 0x1000) - 1
-        left_over = (length + addr) % 0x1000
-        pfn = addr >> self.PAGE_SHIFT
+    def read(self, address, length):
+        return self.zread(address, length)
+    
+    def zread(self, address, length):
+        first_block = 0x1000 - address % 0x1000
+        full_blocks = ((length + address % 0x1000) / 0x1000) - 1
+        left_over = (length + address) % 0x1000
+        pfn = address >> self.PAGE_SHIFT
         if pfn > self.xen_vm_max_pfn:
             raise IOError
-        baddr = self.get_addr(addr)
-        if baddr == None:
-            if length < first_block:
-                return '\0' * length
-            stuff_read = '\0' * first_block
-        else:
-            if length < first_block:
-                return self.base.read(baddr, length)
-            stuff_read = self.base.read(baddr, first_block)
-        new_addr = addr + first_block
+        baddress = self.get_address(address)
+        if length < first_block:
+            return self.base.read(baddress, length) if baddress else '\0' * length
+        stuff_read = self.base.read(baddress, first_block) if baddress else '\0' * first_block
+        baddress = self.get_address(address + first_block)
         for _ in range(full_blocks):
-            baddr = self.get_addr(new_addr)
-            if baddr == None:
-                stuff_read = stuff_read + '\0' * 0x1000
-            else:
-                stuff_read = stuff_read + self.base.read(baddr, 0x1000)
-            new_addr = new_addr + 0x1000
+            stuff_read += self.base.read(baddress, 0x1000) if baddress else '\0' * 0x1000
+            address += 0x1000
         if left_over > 0:
-            baddr = self.get_addr(new_addr)
-            if baddr == None:
-                stuff_read = stuff_read + '\0' * left_over
-            else:
-                stuff_read = stuff_read + self.base.read(baddr, left_over)
+            stuff_read += self.base.read(baddress, left_over) if baddress else '\0' * left_over
         return stuff_read
