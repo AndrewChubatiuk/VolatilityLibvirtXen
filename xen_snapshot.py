@@ -111,7 +111,7 @@ class LibvirtXenSnapshot(addrspace.AbstractRunBasedMemory):
                 self.offset += pfn_array.size()
                 for x in pfn_array:
                     if self.is_frame_valid(x):
-                        pfnno = (x & ~XEN_DOMCTL_PFINFO_LTAB_MASK)
+                        pfnno = x & ~XEN_DOMCTL_PFINFO_LTAB_MASK
                         self.offsets[pfnno] = self.offset
                         self.offset += self.PAGE_SIZE
                         self.update_max_physical_frame_number(pfnno)

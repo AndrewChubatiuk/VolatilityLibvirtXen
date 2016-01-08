@@ -32,17 +32,10 @@ class XenElfDump(addrspace.AbstractRunBasedMemory):
         self.as_assert(base.read(0, 6) == '\x7fELF\x02\x01', "ELF64 Header signature invalid")
         elf = obj.Object("elf_hdr", offset = 0, vm = base)
         self.as_assert(str(elf.e_type) == 'ET_CORE', "ELF64 type is not a Core file")
-        self.PAGE_SIZE = 0
-        self.PAGE_SHIFT = 0
         self.offsets = {}
-        self.xen_vm_max_pfn = 0
         shdrs = list(elf.section_headers())
         try:
-            offset = shdrs[2].sh_offset + XEN_ELFNOTE_DESC_SIZE
-            note = obj.Object("elf64_note", offset, vm = base)
-            if note.n_type != XEN_ELFNOTE_DUMPCORE_HEADER:
-                return
-            offset += XEN_ELFNOTE_DESC_SIZE     
+            offset = shdrs[2].sh_offset + 2 * XEN_ELFNOTE_DESC_SIZE
             header_desc = obj.Object("ELF_HEADER", offset, vm = base)
             if header_desc != None:
                 self.PAGE_SIZE = header_desc.xch_page_size
