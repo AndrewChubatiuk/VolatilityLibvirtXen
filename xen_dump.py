@@ -40,7 +40,9 @@ class XenElfDump(addrspace.AbstractRunBasedMemory):
             if header_desc != None:
                 self.PAGE_SIZE = header_desc.xch_page_size
                 self.PAGE_SHIFT = int(math.log(self.PAGE_SIZE, 2))
-                self.xen_vm_max_pfn = header_desc.xch_nr_pages 
+                self.xen_vm_max_pfn = header_desc.xch_nr_pages
+            else:
+                raise IOError("No header found!")
             page_offset = shdrs[5].sh_offset 
             offset = shdrs[6].sh_offset
             while offset < (shdrs[6].sh_offset + shdrs[6].sh_size):

@@ -1,11 +1,9 @@
 import volatility.obj as obj
 import volatility.addrspace as addrspace
 
-# XEN snapshot Magic
 LIBVIRT_MAGIC = "libvirt-xml\n \0 \r"
 XL_MAGIC = "Xen saved domain, xl format\n \0 \r"
 
-#Following are tags in the snapshot
 XC_SAVE_ID_ENABLE_VERIFY_MODE           = -1
 XC_SAVE_ID_VCPU_INFO                    = -2
 XC_SAVE_ID_HVM_IDENT_PT                 = -3
@@ -25,7 +23,6 @@ XC_SAVE_ID_HVM_ACCESS_RING_PFN          = -16
 XC_SAVE_ID_HVM_SHARING_RING_PFN         = -17
 XC_SAVE_ID_TOOLSTACK                    = -18
 
-## Xen PFN info
 XEN_DOMCTL_PFINFO_LTAB_SHIFT    = 28
 XEN_DOMCTL_PFINFO_NOTAB         = (0x0 << 28)
 XEN_DOMCTL_PFINFO_XTAB          = (0xf << 28)
