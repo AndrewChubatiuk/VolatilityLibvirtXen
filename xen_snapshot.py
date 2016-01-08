@@ -64,19 +64,18 @@ class XenModification(obj.ProfileModification):
             'XL_HEADER': XEN_HEADER
         })
 
-class LibvirtXenSnapshot(addrspace.BaseAddressSpace):
-
-    PAGE_SIZE  = 4096
-    PAGE_SHIFT = 12
-    offsets = {}
-    xen_vm_max_pfn = 0
+class LibvirtXenSnapshot(addrspace.AbstractRunBasedMemory):
 
     def __init__(self, base, config, **kwargs):
         self.as_assert(base, "No base Address Space")
-        addrspace.BaseAddressSpace.__init__(self, base, config, **kwargs)
+        addrspace.AbstractRunBasedMemory.__init__(self, base, config, **kwargs)
+        self.libvirt_header = obj.Object("LIBVIRT_HEADER", offset = 0, vm = base)
+        self.xl_header = obj.Object("XL_HEADER", offset = 0, vm = base)
         self.offset = 0
-        self.libvirt_header = obj.Object("LIBVIRT_HEADER", offset = self.offset, vm = base)
-        self.xl_header = obj.Object("XL_HEADER", offset = self.offset, vm = base)
+        self.PAGE_SIZE  = 4096
+        self.PAGE_SHIFT = 12
+        self.offsets = {}
+        self.xen_vm_max_pfn = 0
         if self.libvirt_header.magic == LIBVIRT_MAGIC:
             self.as_assert(self.libvirt_header.magic == LIBVIRT_MAGIC, "Libvirt Header Mismatch")
             self.offset += self.libvirt_header.xml_len + self.libvirt_header.HeaderSize
@@ -87,7 +86,6 @@ class LibvirtXenSnapshot(addrspace.BaseAddressSpace):
             self.as_assert(self.xl_header.magic == XL_MAGIC, "Xen Header Mismatch")
         p2m_size = obj.Object("unsigned long", offset = self.offset, vm = base)
         self.offset += p2m_size.size()
-        max_memory_len = (self.xen_vm_max_pfn + 1) << self.PAGE_SHIFT
         while True:
             count = obj.Object("int", self.offset, base)
             self.offset += count.size()
@@ -117,6 +115,7 @@ class LibvirtXenSnapshot(addrspace.BaseAddressSpace):
                         self.offsets[pfnno] = self.offset
                         self.offset += self.PAGE_SIZE
                         self.update_max_physical_frame_number(pfnno)
+        self.runs.append((0, 0, (self.xen_vm_max_pfn + 1) << self.PAGE_SHIFT)) 
     
     def is_frame_valid(self, x):
         if  ((x & XEN_DOMCTL_PFINFO_LTAB_MASK == XEN_DOMCTL_PFINFO_XTAB) or
@@ -129,29 +128,39 @@ class LibvirtXenSnapshot(addrspace.BaseAddressSpace):
         borders = [(983040, 984063), (1032192, 1032206), (1044475, 1044479)]
         max_value = max([pfn for b in borders if pfn < b[0] or pfn > b[1]])
         self.xen_vm_max_pfn = max_value if max_value > self.xen_vm_max_pfn else self.xen_vm_max_pfn
-   
-    def get_address(self, address):
-        pfn = address >> self.PAGE_SHIFT
-        return self.offsets[pfn] + address % self.PAGE_SIZE if self.offsets[pfn] else None
-    
-    def read(self, address, length):
-        return self.zread(address, length)
-   
-    def zread(self, address, length):
-        first_block = 0x1000 - address % 0x1000
-        full_blocks = ((length + (address % 0x1000)) / 0x1000) - 1
-        left_over = (length + address) % 0x1000
-        frame = address >> self.PAGE_SHIFT
-        if frame > self.xen_vm_max_pfn:
-            return obj.NoneObject("Could not get base address at " + str(address))
-        baddress = self.get_address(address)
+ 
+    def is_valid_address(self, phys_addr):
+        return not self.address_out_range(phys_addr)   
+
+    def get_address(self, addr):
+        pfn = addr >> self.PAGE_SHIFT
+        try:
+            return self.offsets[pfn] + addr % self.PAGE_SIZE if self.offsets[pfn] else None
+        except:
+            return None
+
+    def address_out_range(self, addr):
+        return (addr >> self.PAGE_SHIFT) > self.xen_vm_max_pfn
+
+    def read(self, addr, length):
+        first_block = 0x1000 - addr % 0x1000
+        full_blocks = ((length + (addr % 0x1000)) / 0x1000) - 1
+        left_over = (length + addr) % 0x1000
+        if  self.address_out_range(addr):
+            return obj.NoneObject("Could not get base address at " + str(addr))
+        baddr = self.get_address(addr)
         if length < first_block:
-            return self.base.read(baddress, length) if baddress else '\0' * length
-        stuff_read = self.base.read(baddress, first_block) if baddress else '\0' * first_block
-        baddress = self.get_address(address + first_block)
+            return self.base.read(baddr, length) if baddr else '\0'*length
+        stuff_read = self.base.read(baddr, first_block) if baddr else '\0' * first_block
+        addr += first_block
         for _ in range(0, full_blocks):
-            stuff_read += self.base.read(baddress, 0x1000) if baddress else '\0' * 0X1000
-            address += 0x1000
+            baddr = self.get_address(addr)
+            stuff_read += self.base.read(baddr, 0x1000) if baddr else '0'*0X1000
+            addr += 0x1000
         if left_over > 0:
-            stuff_read += self.base.read(baddress, left_over) if baddress else '\0' * left_over
-        return stuff_read
+            baddr = self.get_address(addr)
+            stuff_read += self.base.read(baddr, left_over) if baddr else '0'*left_over
+        return stuff_read   
+  
+    def zread(self, address, length):
+        return self.read(address, length)
