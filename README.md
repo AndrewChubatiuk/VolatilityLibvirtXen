@@ -9,6 +9,16 @@ Installation
 * Replace in Volatility folder original vol.py with vol.py from this repo
 * Clone plugins xen_dump.py and xen_snapshot.py to a separate folder. E.G: plugins
 
+Dependencies
+------------
+
+Python 2.7
+Xen 4.4+
+XL Toolstack
+libvirt-bin
+libvirt-python
+volatility
+
 Usage
 -----
 ```
