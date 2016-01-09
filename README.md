@@ -12,12 +12,15 @@ Installation
 Dependencies
 ------------
 
-Python 2.7
-Xen 4.4+
-XL Toolstack
-libvirt-bin
-libvirt-python
-volatility
+Linux:
+* Python 2.7
+* Xen 4.4+
+* XL Toolstack
+* libvirt-bin
+
+Python:
+* libvirt-python
+* volatility
 
 Usage
 -----
